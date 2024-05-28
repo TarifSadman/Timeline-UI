@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Col, Container, Row } from 'react-bootstrap';
-import { Skeleton, Pagination, Select, Input } from 'antd';
+import { Card, Col, Container, Row, Modal, Button } from 'react-bootstrap';
+import { Skeleton, Pagination, Select, Input, Empty } from 'antd';
+import { LikeOutlined, CommentOutlined } from '@ant-design/icons';
 
 const { Option } = Select;
 const { Search } = Input;
@@ -8,24 +9,34 @@ const { Search } = Input;
 const Timeline = ({ theme }) => {
   const [posts, setPosts] = useState([]);
   const [users, setUsers] = useState([]);
+  const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [sortOrder, setSortOrder] = useState('ascending');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [selectedPost, setSelectedPost] = useState(null);
+  const [postLikes, setPostLikes] = useState({});
+  const [postComments, setPostComments] = useState([]);
+  const [comLikes, setComLikes] = useState(Math.floor(Math.random() * 100));
+  const [comLiked, setComLiked] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [postsResponse, usersResponse] = await Promise.all([
+        const [postsResponse, usersResponse, commentsResponse] = await Promise.all([
           fetch('https://jsonplaceholder.typicode.com/posts'),
-          fetch('https://jsonplaceholder.typicode.com/users')
+          fetch('https://jsonplaceholder.typicode.com/users'),
+          fetch('https://jsonplaceholder.typicode.com/comments')
         ]);
         const postsData = await postsResponse.json();
         const usersData = await usersResponse.json();
+        const commentsData = await commentsResponse.json();
 
         setPosts(sortPosts(postsData, sortOrder));
         setUsers(usersData);
+        setComments(commentsData);
         setLoading(false);
       } catch (error) {
         console.error("Error fetching data: ", error);
@@ -63,6 +74,47 @@ const Timeline = ({ theme }) => {
   const handlePageChange = (page, pageSize) => {
     setCurrentPage(page);
     setPageSize(pageSize);
+  };
+
+useEffect(() => {
+  const initialLikes = {};
+  posts.forEach(post => {
+    initialLikes[post.id] = { count: Math.floor(Math.random() * 100), liked: false };
+  });
+  setPostLikes(initialLikes);
+}, [posts]);
+
+
+  const handleLikeClick = (postId) => {
+    setPostLikes(prevLikes => {
+      const updatedLikes = { ...prevLikes };
+      if (updatedLikes[postId].liked) {
+        updatedLikes[postId].count -= 1;
+      } else {
+        updatedLikes[postId].count += 1;
+      }
+      updatedLikes[postId].liked = !updatedLikes[postId].liked;
+      return updatedLikes;
+    });
+  };
+  
+
+  const handleShowModal = (post) => {
+    setSelectedPost(post);
+    const postRelatedComments = comments.filter(comment => comment.postId === post.id);
+    setPostComments(postRelatedComments);
+    setShowModal(true);
+  };
+
+  const handleCommentLikeClick = () => {
+    setComLikes(comLiked ? comLikes - 1 : comLikes + 1);
+    setComLiked(!comLiked);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedPost(null);
+    setPostComments([]);
   };
 
   const cardStyle = theme === 'dark' ? { backgroundColor: '#333', color: 'white' } : {};
@@ -106,24 +158,38 @@ const Timeline = ({ theme }) => {
             <Col xs={12} md={6} lg={6} key={post.id} className="mb-4">
               <Card className="shadow-sm h-100" style={cardStyle}>
                 <Card.Body>
-                  <div className="d-flex align-items-center mb-3">
-                    <div className="me-3">
-                      <img
-                        src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACsAAAArCAYAAADhXXHAAAAAAXNSR0IArs4c6QAAA5hJREFUWEftl2tIU2Ecxp9tlsy5lsw5hzMKooLACirUisoudIEuKkHRhywqRQkvmaWp5cwumnah0qIvEWiUllAgXRTsIhZ0v/hFg5zOuZmlu2ibO3Hew46Wle5s68Z5v2zn3f+8z2/Pec57/kfQHBZL4R8ZAh7WS1eKd9ZLxoJ3lncW4GPgrRT8585K1yyCQpPIutd99gq6y66N6KYiNx7S6CVsXUdiASwPno143tACTltX8KkM+C2cTdah+m3QxqbC9qHjp8K+YVMQcikfEAhITe+NWhhyz7kEShdzghUFBiC0qhhCmT8RtDa8gC4+/8fiQiHUFUcxdupE8ru9owva6BQ4zNbfA0ur+K9egKCCXaxgZ8YJmGoeDgOQbV4NefoWdl4Xr4G14aXLoJyddSopS9IhiZpLDgeM3WhdmwyHycKCiBQBCK0+CaFETOZ6rt2BUXOeE6jbsCK5DOqqEojGSxmYihoYD19kYZSFKZAsj2Quf7sB2phUOCx9fwaWxGHFPAQdTWYAHBTaNu9D/5tmiCPCoCrNZuYpCrrtebA+ec0Z1G1n2TgUpUGyLJwc9r9tQXtcDtRXCzFmgopxvLwGxiODjnMl5rQbfC8mChgH9fUS0J8EuOk9fKdNIt9trXpoY9NA9fVzZWTP8wgsvRrtrLIo7VsgB4X2bbnoe/rObVCPxcBJoirdD3HEDBbMdKsenZmnPQLqUVgflQLqyuPsNkUvPvCplzwABro+ewTYYzFQlWVDHB42DMpc9wT65GN/D+y42GUIzN7B7FJfbDAcLEWQJgkQMr1AZ9ZpmG7Wuw3strM+qkCoK4vZy+/swuR7t0K2cSUBdPSY0UrHwdDtFrDbsENvKltLG7QbdoOy2Qk8vZ35KOUE0HL/KTqSDv85WGnMUihydjIAFIX2LTnoe97EAtF9A90/OIch5yx6q+s4A3N21idYTvoCtkm5ehvG/AvDQJQn9kCyeA4TB5MF2uhU2PVdnIA5w6rOZUEcOZOI0llsXfdtx+WkoWNAx8H5p6yPnkOXcOj3wUrXR0FxIIEV1KcWwXyv8acAsk2rIM+IG4xDXhl6K++6DOyys8Qp+i3B34+ImWsfQ59S+GthoQAhlwvgO30yEwezlbSLdp3RJWCXYYPPZMJv/qxB0XXJsHd+HFGUfq0JKT8CgUhEaq2Nr6DbqSE35miHy7CjXdgbdTysN1yl1+Sd5Z3lY+CtDPDOetHZr3KlgQVwk6ReAAAAAElFTkSuQmCC"
-                        alt={post.title}
-                        className="rounded-circle"
-                        width="40"
-                        height="40"
-                      />
-                    </div>
-                    <div>
-                      <Card.Title className="mb-0" style={{ color: theme === 'dark' ? 'white' : 'black' }}>{post.title}</Card.Title>
-                      <Card.Subtitle className={`py-2`} style={{ color: theme === 'dark' ? 'lightgray' : 'gray' }}>
-                        {users.find(user => user.id === post.userId)?.name}
-                      </Card.Subtitle>
-                    </div>
+                  <div className="d-flex align-items-center mb-2">
+                    <img
+                      src="https://via.placeholder.com/40"
+                      alt={post.title}
+                      className="rounded-circle me-2"
+                      width="40"
+                      height="40"
+                    />
+                    <span style={{ color: theme === 'dark' ? 'white' : 'black' }}>
+                      {users.find(user => user.id === post.userId)?.name}
+                    </span>
                   </div>
-                  <Card.Text style={{ color: theme === 'dark' ? 'white' : 'black' }}>{post.body}</Card.Text>
+                  <div className="mb-2">
+                    <h5 style={{ color: theme === 'dark' ? 'white' : 'black' }}>{post.title}</h5>
+                  </div>
+                  <div className="mb-3">
+                    <Card.Text style={{ color: theme === 'dark' ? 'white' : 'black' }}>{post.body}</Card.Text>
+                  </div>
+                  <div className="d-flex justify-content-start align-items-center">
+                    <LikeOutlined
+                        className="me-2"
+                        style={{ cursor: 'pointer', color: postLikes[post.id]?.liked ? 'blue' : 'inherit' }}
+                        onClick={() => handleLikeClick(post.id)}
+                    />
+                    <span onClick={() => handleLikeClick(post.id)}>{postLikes[post.id]?.count}</span>
+                    <span className="ms-4 me-2" style={{ cursor: 'pointer' }} onClick={() => handleShowModal(post)}>
+                      <CommentOutlined />
+                    </span>
+                    <span style={{ cursor: 'pointer' }} onClick={() => handleShowModal(post)}>
+                      {comments.filter(comment => comment.postId === post.id).length}
+                    </span>
+                  </div>
                 </Card.Body>
               </Card>
             </Col>
@@ -145,6 +211,68 @@ const Timeline = ({ theme }) => {
           </div>
         </Col>
       </Row>
+      <Modal 
+        show={showModal} 
+        onHide={handleCloseModal}
+        className='modal-lg'
+      >
+        <Modal.Header closeButton>
+          <Modal.Title className='text-uppercase'>{selectedPost?.title}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>{selectedPost?.body}</p>
+          <h4>Comments</h4>
+          {postComments.length > 0 ? (
+            postComments.map(comment => (
+              <Card className="mb-3">
+                <Card.Body>
+                  <Row className="align-items-center">
+                    <Col xs="auto">
+                      <img
+                        src="https://via.placeholder.com/40"
+                        alt={comment.name}
+                        className="rounded-circle"
+                        width="40"
+                        height="40"
+                      />
+                    </Col>
+                    <Col>
+                      <div>
+                        <div className="fw-bold">{comment.name}</div>
+                        <div className="text-muted">{comment.email}</div>
+                      </div>
+                    </Col>
+                  </Row>
+                  <Row className="mt-3">
+                    <Col>
+                      <p>{comment.body}</p>
+                    </Col>
+                  </Row>
+                  <Row>
+                    <Col>
+                      <LikeOutlined
+                        className="me-2"
+                        style={{ cursor: 'pointer', color: comLiked ? 'blue' : 'inherit' }}
+                        onClick={handleCommentLikeClick}
+                      />
+                      <span>{comLikes}</span>
+                      <CommentOutlined className="ms-4" style={{ cursor: 'pointer' }} />
+                      <span className="ms-2">Reply</span>
+                    </Col>
+                  </Row>
+                </Card.Body>
+              </Card>
+            ))
+          ) : (
+            <Empty description="No comments found" />
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleCloseModal}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 };
